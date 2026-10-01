@@ -1,16 +1,11 @@
 """Minimal System One HTTP client with fail-open behavior.
 
-Default endpoint is the OpenRouter Decisions API
-(https://openrouter.ai/api/alpha/decisions) with
-model `inception/mercury-decide:free`.
+Endpoint, model and key are env-driven (breaking change: no legacy
+fallbacks):
 
-Resolution order (first set wins):
-  key:   explicit arg > DECISION_MODEL_API_KEY > OPENROUTER_API_KEY
-         > TYPESAFE_API_KEY (legacy)
-  url:   explicit arg > SYSTEM_ONE_URL (legacy) > DECISION_MODEL_BASE_URL
-         > OpenRouter default
-  model: explicit arg > SYSTEM_ONE_MODEL (legacy) > DECISION_MODEL_NAME
-         > mercury-decide default
+  key:   DECISION_MODEL_API_KEY (unset -> client disabled -> legacy LLM path)
+  url:   DECISION_MODEL_BASE_URL (default: OpenRouter Decisions API)
+  model: DECISION_MODEL_NAME (default: inception/mercury-decide:free)
 """
 
 from __future__ import annotations
@@ -54,21 +49,14 @@ class SystemOneClient:
         model: Optional[str] = None,
         timeout: Optional[float] = None,
     ) -> None:
-        self.api_key = (
-            api_key
-            or os.getenv("DECISION_MODEL_API_KEY")
-            or os.getenv("OPENROUTER_API_KEY")
-            or os.getenv("TYPESAFE_API_KEY", "")
-        )
+        self.api_key = api_key or os.getenv("DECISION_MODEL_API_KEY", "")
         self.url = (
             url
-            or os.getenv("SYSTEM_ONE_URL")
             or os.getenv("DECISION_MODEL_BASE_URL")
             or "https://openrouter.ai/api/alpha/decisions"
         )
         self.model = (
             model
-            or os.getenv("SYSTEM_ONE_MODEL")
             or os.getenv("DECISION_MODEL_NAME")
             or "inception/mercury-decide:free"
         )
