@@ -1,4 +1,12 @@
-"""Minimal TypeSafe System One HTTP client with fail-open behavior."""
+"""Minimal System One HTTP client with fail-open behavior.
+
+Endpoint, model and key are env-driven (breaking change: no legacy
+fallbacks):
+
+  key:   DECISION_MODEL_API_KEY (unset -> client disabled -> legacy LLM path)
+  url:   DECISION_MODEL_BASE_URL (default: OpenRouter Decisions API)
+  model: DECISION_MODEL_NAME (default: inception/mercury-decide:free)
+"""
 
 from __future__ import annotations
 
@@ -41,11 +49,17 @@ class SystemOneClient:
         model: Optional[str] = None,
         timeout: Optional[float] = None,
     ) -> None:
-        self.api_key = api_key or os.getenv("TYPESAFE_API_KEY", "")
-        self.url = url or os.getenv(
-            "SYSTEM_ONE_URL", "https://api.typesafe.ai/v1/systemone"
+        self.api_key = api_key or os.getenv("DECISION_MODEL_API_KEY", "")
+        self.url = (
+            url
+            or os.getenv("DECISION_MODEL_BASE_URL")
+            or "https://openrouter.ai/api/alpha/decisions"
         )
-        self.model = model or os.getenv("SYSTEM_ONE_MODEL", "jev-latest")
+        self.model = (
+            model
+            or os.getenv("DECISION_MODEL_NAME")
+            or "inception/mercury-decide:free"
+        )
         try:
             self.timeout = float(
                 timeout if timeout is not None else os.getenv("SYSTEM_ONE_TIMEOUT", "30")
