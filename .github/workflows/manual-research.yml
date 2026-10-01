@@ -31,42 +31,47 @@ jobs:
       PYTHONPATH: ${{ github.workspace }}
       OPENCODE_SESSION_ID: bettafish-${{ github.run_id }}
       OPENCODE_USER_AGENT: bettafish-github-actions/1.0
-      MODEL_API_KEY: ${{ secrets.MODEL_API_KEY }}
-      MODEL_BASE_URL: ${{ vars.MODEL_BASE_URL }}
-      MODEL_NAME: ${{ vars.MODEL_NAME }}
+      # Canonical LLM_* names; legacy MODEL_* secret/vars kept as fallback.
+      LLM_MODEL_API_KEY: ${{ secrets.LLM_MODEL_API_KEY || secrets.MODEL_API_KEY }}
+      LLM_MODEL_BASE_URL: ${{ vars.LLM_MODEL_BASE_URL || vars.MODEL_BASE_URL }}
+      LLM_MODEL_NAME: ${{ vars.LLM_MODEL_NAME || vars.MODEL_NAME }}
 
-      QUERY_ENGINE_API_KEY: ${{ secrets.MODEL_API_KEY }}
-      QUERY_ENGINE_BASE_URL: ${{ vars.MODEL_BASE_URL }}
-      QUERY_ENGINE_MODEL_NAME: ${{ vars.MODEL_NAME }}
-      MEDIA_ENGINE_API_KEY: ${{ secrets.MODEL_API_KEY }}
-      MEDIA_ENGINE_BASE_URL: ${{ vars.MODEL_BASE_URL }}
-      MEDIA_ENGINE_MODEL_NAME: ${{ vars.MODEL_NAME }}
-      INSIGHT_ENGINE_API_KEY: ${{ secrets.MODEL_API_KEY }}
-      INSIGHT_ENGINE_BASE_URL: ${{ vars.MODEL_BASE_URL }}
-      INSIGHT_ENGINE_MODEL_NAME: ${{ vars.MODEL_NAME }}
-      REPORT_ENGINE_API_KEY: ${{ secrets.MODEL_API_KEY }}
-      REPORT_ENGINE_BASE_URL: ${{ vars.MODEL_BASE_URL }}
-      REPORT_ENGINE_MODEL_NAME: ${{ vars.MODEL_NAME }}
-      MINDSPIDER_API_KEY: ${{ secrets.MODEL_API_KEY }}
-      MINDSPIDER_BASE_URL: ${{ vars.MODEL_BASE_URL }}
-      MINDSPIDER_MODEL_NAME: ${{ vars.MODEL_NAME }}
-      FORUM_HOST_API_KEY: ${{ secrets.MODEL_API_KEY }}
-      FORUM_HOST_BASE_URL: ${{ vars.MODEL_BASE_URL }}
-      FORUM_HOST_MODEL_NAME: ${{ vars.MODEL_NAME }}
-      KEYWORD_OPTIMIZER_API_KEY: ${{ secrets.MODEL_API_KEY }}
-      KEYWORD_OPTIMIZER_BASE_URL: ${{ vars.MODEL_BASE_URL }}
-      KEYWORD_OPTIMIZER_MODEL_NAME: ${{ vars.MODEL_NAME }}
+      QUERY_ENGINE_API_KEY: ${{ secrets.LLM_MODEL_API_KEY || secrets.MODEL_API_KEY }}
+      QUERY_ENGINE_BASE_URL: ${{ vars.LLM_MODEL_BASE_URL || vars.MODEL_BASE_URL }}
+      QUERY_ENGINE_MODEL_NAME: ${{ vars.LLM_MODEL_NAME || vars.MODEL_NAME }}
+      MEDIA_ENGINE_API_KEY: ${{ secrets.LLM_MODEL_API_KEY || secrets.MODEL_API_KEY }}
+      MEDIA_ENGINE_BASE_URL: ${{ vars.LLM_MODEL_BASE_URL || vars.MODEL_BASE_URL }}
+      MEDIA_ENGINE_MODEL_NAME: ${{ vars.LLM_MODEL_NAME || vars.MODEL_NAME }}
+      INSIGHT_ENGINE_API_KEY: ${{ secrets.LLM_MODEL_API_KEY || secrets.MODEL_API_KEY }}
+      INSIGHT_ENGINE_BASE_URL: ${{ vars.LLM_MODEL_BASE_URL || vars.MODEL_BASE_URL }}
+      INSIGHT_ENGINE_MODEL_NAME: ${{ vars.LLM_MODEL_NAME || vars.MODEL_NAME }}
+      REPORT_ENGINE_API_KEY: ${{ secrets.LLM_MODEL_API_KEY || secrets.MODEL_API_KEY }}
+      REPORT_ENGINE_BASE_URL: ${{ vars.LLM_MODEL_BASE_URL || vars.MODEL_BASE_URL }}
+      REPORT_ENGINE_MODEL_NAME: ${{ vars.LLM_MODEL_NAME || vars.MODEL_NAME }}
+      MINDSPIDER_API_KEY: ${{ secrets.LLM_MODEL_API_KEY || secrets.MODEL_API_KEY }}
+      MINDSPIDER_BASE_URL: ${{ vars.LLM_MODEL_BASE_URL || vars.MODEL_BASE_URL }}
+      MINDSPIDER_MODEL_NAME: ${{ vars.LLM_MODEL_NAME || vars.MODEL_NAME }}
+      FORUM_HOST_API_KEY: ${{ secrets.LLM_MODEL_API_KEY || secrets.MODEL_API_KEY }}
+      FORUM_HOST_BASE_URL: ${{ vars.LLM_MODEL_BASE_URL || vars.MODEL_BASE_URL }}
+      FORUM_HOST_MODEL_NAME: ${{ vars.LLM_MODEL_NAME || vars.MODEL_NAME }}
+      KEYWORD_OPTIMIZER_API_KEY: ${{ secrets.LLM_MODEL_API_KEY || secrets.MODEL_API_KEY }}
+      KEYWORD_OPTIMIZER_BASE_URL: ${{ vars.LLM_MODEL_BASE_URL || vars.MODEL_BASE_URL }}
+      KEYWORD_OPTIMIZER_MODEL_NAME: ${{ vars.LLM_MODEL_NAME || vars.MODEL_NAME }}
 
       TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
       ANSPIRE_API_KEY: ${{ secrets.ANSPIRE_API_KEY }}
       SEARCH_TOOL_TYPE: "AnspireAPI"
-      # OpenRouter Decisions API key; TYPESAFE_API_KEY kept as legacy fallback.
+      # Decision model: canonical DECISION_MODEL_*; legacy OPENROUTER/TYPESAFE
+      # names and pinned defaults kept as fallback.
+      DECISION_MODEL_API_KEY: ${{ secrets.DECISION_MODEL_API_KEY || secrets.OPENROUTER_API_KEY || secrets.TYPESAFE_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
 
       SYSTEM_ONE_ENABLED: ${{ inputs.use_system_one }}
-      SYSTEM_ONE_URL: "https://openrouter.ai/api/alpha/decisions"
-      SYSTEM_ONE_MODEL: "inception/mercury-decide:free"
+      SYSTEM_ONE_URL: ${{ vars.DECISION_MODEL_BASE_URL || 'https://openrouter.ai/api/alpha/decisions' }}
+      SYSTEM_ONE_MODEL: ${{ vars.DECISION_MODEL_NAME || 'inception/mercury-decide:free' }}
+      DECISION_MODEL_BASE_URL: ${{ vars.DECISION_MODEL_BASE_URL || 'https://openrouter.ai/api/alpha/decisions' }}
+      DECISION_MODEL_NAME: ${{ vars.DECISION_MODEL_NAME || 'inception/mercury-decide:free' }}
       SYSTEM_ONE_TRACE_PATH: "artifacts/system_one_trace.jsonl"
       MAX_REFLECTIONS: ${{ inputs.max_reflections }}
 
@@ -85,28 +90,29 @@ jobs:
         shell: bash
         run: |
           missing=()
-          [[ -n "$MODEL_API_KEY" ]] || missing+=("MODEL_API_KEY")
-          [[ -n "$MODEL_NAME" ]] || missing+=("Repository variable MODEL_NAME")
+          [[ -n "$LLM_MODEL_API_KEY" || -n "$MODEL_API_KEY" ]] || missing+=("LLM_MODEL_API_KEY (secret; legacy MODEL_API_KEY accepted)")
+          [[ -n "$LLM_MODEL_NAME" || -n "$MODEL_NAME" ]] || missing+=("Repository variable LLM_MODEL_NAME (legacy MODEL_NAME accepted)")
           [[ -n "$TAVILY_API_KEY" ]] || missing+=("TAVILY_API_KEY")
-          if [[ "$SYSTEM_ONE_ENABLED" == "true" && -z "$OPENROUTER_API_KEY" && -z "$TYPESAFE_API_KEY" ]]; then
-            missing+=("OPENROUTER_API_KEY (or legacy TYPESAFE_API_KEY)")
+          if [[ "$SYSTEM_ONE_ENABLED" == "true" && -z "$DECISION_MODEL_API_KEY" && -z "$OPENROUTER_API_KEY" && -z "$TYPESAFE_API_KEY" ]]; then
+            missing+=("DECISION_MODEL_API_KEY (or legacy OPENROUTER_API_KEY / TYPESAFE_API_KEY)")
           fi
 
           if (( ${#missing[@]} > 0 )); then
             printf 'Missing required configuration:\n'
             printf '  - %s\n' "${missing[@]}"
             echo
-            echo "MODEL_BASE_URL is read from Repository Variables (vars.MODEL_BASE_URL) and may be empty only for the OpenAI SDK default endpoint."
+            echo "LLM_MODEL_BASE_URL is read from Repository Variables (vars.LLM_MODEL_BASE_URL, legacy vars.MODEL_BASE_URL) and may be empty only for the OpenAI SDK default endpoint."
             exit 1
           fi
 
           echo "Configuration OK"
-          echo "MODEL_NAME=$MODEL_NAME"
-          if [[ -n "$MODEL_BASE_URL" ]]; then
-            echo "MODEL_BASE_URL is configured"
+          echo "LLM_MODEL_NAME=${LLM_MODEL_NAME:-$MODEL_NAME}"
+          if [[ -n "${LLM_MODEL_BASE_URL:-$MODEL_BASE_URL}" ]]; then
+            echo "LLM_MODEL_BASE_URL is configured"
           else
-            echo "MODEL_BASE_URL is empty; OpenAI SDK default endpoint will be used"
+            echo "LLM_MODEL_BASE_URL is empty; OpenAI SDK default endpoint will be used"
           fi
+          echo "DECISION_MODEL_NAME=${DECISION_MODEL_NAME:-$SYSTEM_ONE_MODEL}"
 
       - name: Install headless dependencies
         run: |

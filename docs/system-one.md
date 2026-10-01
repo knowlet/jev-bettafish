@@ -3,12 +3,19 @@
 ## Endpoint
 
 System One talks to the **OpenRouter Decisions API** with the
-`inception/mercury-decide:free` model:
+`inception/mercury-decide:free` model. All three are env-driven:
 
-- URL: `https://openrouter.ai/api/alpha/decisions` (override with `SYSTEM_ONE_URL`)
-- Model: `inception/mercury-decide:free` (override with `SYSTEM_ONE_MODEL`)
-- Key: `OPENROUTER_API_KEY` (`TYPESAFE_API_KEY` still accepted as a legacy
-  alias so existing deployments keep working)
+| Role | Canonical env | Default when unset |
+|---|---|---|
+| key | `DECISION_MODEL_API_KEY` | — (fail-open to legacy LLM path) |
+| url | `DECISION_MODEL_BASE_URL` | `https://openrouter.ai/api/alpha/decisions` |
+| model | `DECISION_MODEL_NAME` | `inception/mercury-decide:free` |
+
+Legacy fallbacks (first set wins, so existing deployments keep working):
+
+- key: `DECISION_MODEL_API_KEY` > `OPENROUTER_API_KEY` > `TYPESAFE_API_KEY`
+- url: `SYSTEM_ONE_URL` > `DECISION_MODEL_BASE_URL` > OpenRouter default
+- model: `SYSTEM_ONE_MODEL` > `DECISION_MODEL_NAME` > mercury-decide default
 
 The request/response schema (`state` + typed `questions` -> `answers`) is the
 System One schema; mercury-decide serves it natively.
@@ -51,14 +58,16 @@ only generates the open-ended query.
 
 The integration is fail-open to the legacy path:
 
-- no `OPENROUTER_API_KEY` (and no legacy `TYPESAFE_API_KEY`) -> existing behavior;
+- no decision-model key (`DECISION_MODEL_API_KEY`, legacy
+  `OPENROUTER_API_KEY` / `TYPESAFE_API_KEY`) -> existing behavior;
 - request/response error -> existing behavior;
 - Choice confidence below `SYSTEM_ONE_CHOICE_CONFIDENCE` -> fallback;
 - reflection Noul below `SYSTEM_ONE_STOP_THRESHOLD` -> skip the next expensive
   reflection query + search + summary chain.
 
-Defaults: `SYSTEM_ONE_MODEL=inception/mercury-decide:free`,
-`SYSTEM_ONE_URL=https://openrouter.ai/api/alpha/decisions`,
+Defaults: `DECISION_MODEL_NAME=inception/mercury-decide:free`,
+`DECISION_MODEL_BASE_URL=https://openrouter.ai/api/alpha/decisions`
+(legacy `SYSTEM_ONE_MODEL` / `SYSTEM_ONE_URL` still override),
 `SYSTEM_ONE_CHOICE_CONFIDENCE=0.45`,
 `SYSTEM_ONE_STOP_THRESHOLD=0.30`, `SYSTEM_ONE_TIMEOUT=30`.
 
@@ -74,14 +83,17 @@ Inputs: `query`, `max_reflections` (0..3), and `use_system_one`.
 Configuration wired by the workflow:
 
 Repository secrets:
-- `MODEL_API_KEY`
+- `LLM_MODEL_API_KEY` (legacy `MODEL_API_KEY` still accepted)
 - `TAVILY_API_KEY`
 - `ANSPIRE_API_KEY`
-- `OPENROUTER_API_KEY` (legacy `TYPESAFE_API_KEY` still accepted)
+- `DECISION_MODEL_API_KEY` (legacy `OPENROUTER_API_KEY` / `TYPESAFE_API_KEY`
+  still accepted)
 
 Repository variables:
-- `MODEL_BASE_URL`
-- `MODEL_NAME`
+- `LLM_MODEL_BASE_URL` (legacy `MODEL_BASE_URL`)
+- `LLM_MODEL_NAME` (legacy `MODEL_NAME`)
+- `DECISION_MODEL_BASE_URL` (default: OpenRouter Decisions endpoint)
+- `DECISION_MODEL_NAME` (default: `inception/mercury-decide:free`)
 
 The current headless job runs QueryEngine, so Tavily is the active search API.
 Anspire is wired for the rest of BettaFish but is not invoked by this job.
