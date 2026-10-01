@@ -1,4 +1,10 @@
-"""Minimal TypeSafe System One HTTP client with fail-open behavior."""
+"""Minimal System One HTTP client with fail-open behavior.
+
+Default endpoint is the OpenRouter Decisions API
+(https://openrouter.ai/api/alpha/decisions) with
+model `inception/mercury-decide:free`; both are overridable via
+SYSTEM_ONE_URL / SYSTEM_ONE_MODEL.
+"""
 
 from __future__ import annotations
 
@@ -41,11 +47,15 @@ class SystemOneClient:
         model: Optional[str] = None,
         timeout: Optional[float] = None,
     ) -> None:
-        self.api_key = api_key or os.getenv("TYPESAFE_API_KEY", "")
-        self.url = url or os.getenv(
-            "SYSTEM_ONE_URL", "https://api.typesafe.ai/v1/systemone"
+        self.api_key = api_key or os.getenv("OPENROUTER_API_KEY") or os.getenv(
+            "TYPESAFE_API_KEY", ""
         )
-        self.model = model or os.getenv("SYSTEM_ONE_MODEL", "jev-latest")
+        self.url = url or os.getenv(
+            "SYSTEM_ONE_URL", "https://openrouter.ai/api/alpha/decisions"
+        )
+        self.model = model or os.getenv(
+            "SYSTEM_ONE_MODEL", "inception/mercury-decide:free"
+        )
         try:
             self.timeout = float(
                 timeout if timeout is not None else os.getenv("SYSTEM_ONE_TIMEOUT", "30")

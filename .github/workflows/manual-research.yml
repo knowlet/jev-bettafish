@@ -14,7 +14,7 @@ on:
         type: choice
         options: ["0", "1", "2", "3"]
       use_system_one:
-        description: "Use TypeSafe System One / Jev for bounded decisions"
+        description: "Use System One decision model (mercury-decide) for bounded decisions"
         required: true
         default: true
         type: boolean
@@ -60,10 +60,13 @@ jobs:
       TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
       ANSPIRE_API_KEY: ${{ secrets.ANSPIRE_API_KEY }}
       SEARCH_TOOL_TYPE: "AnspireAPI"
+      # OpenRouter Decisions API key; TYPESAFE_API_KEY kept as legacy fallback.
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
 
       SYSTEM_ONE_ENABLED: ${{ inputs.use_system_one }}
-      SYSTEM_ONE_MODEL: "jev-latest"
+      SYSTEM_ONE_URL: "https://openrouter.ai/api/alpha/decisions"
+      SYSTEM_ONE_MODEL: "inception/mercury-decide:free"
       SYSTEM_ONE_TRACE_PATH: "artifacts/system_one_trace.jsonl"
       MAX_REFLECTIONS: ${{ inputs.max_reflections }}
 
@@ -85,8 +88,8 @@ jobs:
           [[ -n "$MODEL_API_KEY" ]] || missing+=("MODEL_API_KEY")
           [[ -n "$MODEL_NAME" ]] || missing+=("Repository variable MODEL_NAME")
           [[ -n "$TAVILY_API_KEY" ]] || missing+=("TAVILY_API_KEY")
-          if [[ "$SYSTEM_ONE_ENABLED" == "true" && -z "$TYPESAFE_API_KEY" ]]; then
-            missing+=("TYPESAFE_API_KEY")
+          if [[ "$SYSTEM_ONE_ENABLED" == "true" && -z "$OPENROUTER_API_KEY" && -z "$TYPESAFE_API_KEY" ]]; then
+            missing+=("OPENROUTER_API_KEY (or legacy TYPESAFE_API_KEY)")
           fi
 
           if (( ${#missing[@]} > 0 )); then

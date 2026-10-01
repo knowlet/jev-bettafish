@@ -39,7 +39,8 @@ def _is_enabled(name: str, default: bool = True) -> bool:
 def _preflight() -> None:
     required = ["QUERY_ENGINE_API_KEY", "QUERY_ENGINE_MODEL_NAME", "TAVILY_API_KEY"]
     if _is_enabled("SYSTEM_ONE_ENABLED", True):
-        required.append("TYPESAFE_API_KEY")
+        if not os.getenv("OPENROUTER_API_KEY") and not os.getenv("TYPESAFE_API_KEY"):
+            required.append("OPENROUTER_API_KEY")
     missing = [name for name in required if not os.getenv(name)]
     if missing:
         raise RuntimeError("Missing required environment variables: " + ", ".join(missing))
@@ -72,7 +73,9 @@ def main() -> int:
         "finished_at": finished.isoformat(),
         "duration_seconds": round((finished - started).total_seconds(), 3),
         "system_one_enabled": _is_enabled("SYSTEM_ONE_ENABLED", True),
-        "system_one_model": os.getenv("SYSTEM_ONE_MODEL", "jev-latest"),
+        "system_one_model": os.getenv(
+            "SYSTEM_ONE_MODEL", "inception/mercury-decide:free"
+        ),
         "llm_model": os.getenv("QUERY_ENGINE_MODEL_NAME"),
         "max_reflections": int(os.getenv("MAX_REFLECTIONS", "2")),
     }

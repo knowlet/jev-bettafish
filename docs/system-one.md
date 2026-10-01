@@ -1,4 +1,17 @@
-# System One / Jev integration
+# System One / decision model integration
+
+## Endpoint
+
+System One talks to the **OpenRouter Decisions API** with the
+`inception/mercury-decide:free` model:
+
+- URL: `https://openrouter.ai/api/alpha/decisions` (override with `SYSTEM_ONE_URL`)
+- Model: `inception/mercury-decide:free` (override with `SYSTEM_ONE_MODEL`)
+- Key: `OPENROUTER_API_KEY` (`TYPESAFE_API_KEY` still accepted as a legacy
+  alias so existing deployments keep working)
+
+The request/response schema (`state` + typed `questions` -> `answers`) is the
+System One schema; mercury-decide serves it natively.
 
 ## Audit result
 
@@ -38,13 +51,14 @@ only generates the open-ended query.
 
 The integration is fail-open to the legacy path:
 
-- no `TYPESAFE_API_KEY` -> existing behavior;
+- no `OPENROUTER_API_KEY` (and no legacy `TYPESAFE_API_KEY`) -> existing behavior;
 - request/response error -> existing behavior;
 - Choice confidence below `SYSTEM_ONE_CHOICE_CONFIDENCE` -> fallback;
 - reflection Noul below `SYSTEM_ONE_STOP_THRESHOLD` -> skip the next expensive
   reflection query + search + summary chain.
 
-Defaults: `SYSTEM_ONE_MODEL=jev-latest`,
+Defaults: `SYSTEM_ONE_MODEL=inception/mercury-decide:free`,
+`SYSTEM_ONE_URL=https://openrouter.ai/api/alpha/decisions`,
 `SYSTEM_ONE_CHOICE_CONFIDENCE=0.45`,
 `SYSTEM_ONE_STOP_THRESHOLD=0.30`, `SYSTEM_ONE_TIMEOUT=30`.
 
@@ -63,7 +77,7 @@ Repository secrets:
 - `MODEL_API_KEY`
 - `TAVILY_API_KEY`
 - `ANSPIRE_API_KEY`
-- `TYPESAFE_API_KEY`
+- `OPENROUTER_API_KEY` (legacy `TYPESAFE_API_KEY` still accepted)
 
 Repository variables:
 - `MODEL_BASE_URL`
@@ -111,7 +125,7 @@ Insight routing asks tool, platform, recency window and whether sentiment is use
 
 ### Forum host gate
 
-Every five agent speeches are judged first. If `host_needed < SYSTEM_ONE_HOST_THRESHOLD`, the five speeches are consumed without paying for a host LLM turn. TypeSafe failure preserves the legacy host behavior.
+Every five agent speeches are judged first. If `host_needed < SYSTEM_ONE_HOST_THRESHOLD`, the five speeches are consumed without paying for a host LLM turn. Decision-model failure preserves the legacy host behavior.
 
 ### Word budget
 
