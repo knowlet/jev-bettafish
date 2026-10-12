@@ -86,9 +86,7 @@ jobs:
           [[ -n "$LLM_MODEL_API_KEY" ]] || missing+=("LLM_MODEL_API_KEY")
           [[ -n "$LLM_MODEL_NAME" ]] || missing+=("Repository variable LLM_MODEL_NAME")
           [[ -n "$TAVILY_API_KEY" ]] || missing+=("TAVILY_API_KEY")
-          if [[ "$SYSTEM_ONE_ENABLED" == "true" && -z "$DECISION_MODEL_API_KEY" ]]; then
-            missing+=("DECISION_MODEL_API_KEY")
-          fi
+          # System One is optional; missing credentials use the legacy LLM path.
 
           if (( ${#missing[@]} > 0 )); then
             printf 'Missing required configuration:\n'
@@ -124,7 +122,7 @@ jobs:
             ReportEngine/nodes/word_budget_node.py \
             ReportEngine/nodes/document_layout_node.py \
             scripts/run_workflow_research.py
-          pytest -q tests/test_system_one_decisions.py tests/test_system_one_wiring.py tests/test_report_structure_guard.py tests/test_opencode_go.py
+          pytest -q tests/test_system_one_configuration.py tests/test_system_one_decisions.py tests/test_system_one_wiring.py tests/test_report_structure_guard.py tests/test_opencode_go.py
 
       - name: Run research
         env:

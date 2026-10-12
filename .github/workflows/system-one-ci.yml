@@ -10,6 +10,8 @@ on:
       - "InsightEngine/**"
       - "ForumEngine/**"
       - "ReportEngine/**"
+      - "scripts/run_workflow_research.py"
+      - ".github/workflows/manual-research.yml"
       - "tests/test_system_one_*.py"
       - "tests/test_report_structure_guard.py"
       - "requirements-actions.txt"
@@ -22,6 +24,8 @@ on:
       - "InsightEngine/**"
       - "ForumEngine/**"
       - "ReportEngine/**"
+      - "scripts/run_workflow_research.py"
+      - ".github/workflows/manual-research.yml"
       - "tests/test_system_one_*.py"
       - "tests/test_report_structure_guard.py"
       - "requirements-actions.txt"
@@ -63,6 +67,7 @@ jobs:
       - name: Run System One tests
         run: |
           pytest -q \
+            tests/test_system_one_configuration.py \
             tests/test_system_one_decisions.py \
             tests/test_system_one_wiring.py \
             tests/test_report_structure_guard.py \

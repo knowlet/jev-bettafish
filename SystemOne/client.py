@@ -21,6 +21,7 @@ from typing import Any, Dict, Mapping, Optional
 
 import httpx
 from loguru import logger
+from dotenv import load_dotenv
 
 
 _TRACE_LOCK = threading.Lock()
@@ -35,7 +36,7 @@ def _env_bool(name: str, default: bool) -> bool:
 
 
 class SystemOneClient:
-    """Small wrapper around POST /v1/systemone.
+    """Small wrapper around the OpenRouter Decisions API.
 
     This layer is intentionally non-critical: missing credentials, transport
     errors, response changes, or low-confidence decisions must not break the
@@ -49,6 +50,11 @@ class SystemOneClient:
         model: Optional[str] = None,
         timeout: Optional[float] = None,
     ) -> None:
+        # Match config.py: prefer a .env in the working directory, then the
+        # project root. Existing process environment always takes precedence.
+        cwd_env = Path.cwd() / ".env"
+        env_file = cwd_env if cwd_env.exists() else Path(__file__).resolve().parents[1] / ".env"
+        load_dotenv(env_file, override=False)
         self.api_key = api_key or os.getenv("DECISION_MODEL_API_KEY", "")
         self.url = (
             url

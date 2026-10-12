@@ -38,9 +38,7 @@ def _is_enabled(name: str, default: bool = True) -> bool:
 
 def _preflight() -> None:
     required = ["QUERY_ENGINE_API_KEY", "QUERY_ENGINE_MODEL_NAME", "TAVILY_API_KEY"]
-    if _is_enabled("SYSTEM_ONE_ENABLED", True):
-        if not os.getenv("DECISION_MODEL_API_KEY"):
-            required.append("DECISION_MODEL_API_KEY")
+    # System One is optional; a missing key uses the legacy LLM path.
     missing = [name for name in required if not os.getenv(name)]
     if missing:
         raise RuntimeError("Missing required environment variables: " + ", ".join(missing))
