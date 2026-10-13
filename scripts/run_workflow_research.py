@@ -58,6 +58,11 @@ def main() -> int:
     _preflight()
 
     from QueryEngine.agent import DeepSearchAgent
+    from SystemOne.client import get_system_one_client
+
+    # Use the same dotenv-aware singleton as the decision call sites. These
+    # flags describe configuration, not successful decision usage.
+    system_one_client = get_system_one_client()
 
     started = datetime.now(timezone.utc)
     agent = DeepSearchAgent()
@@ -70,10 +75,10 @@ def main() -> int:
         "started_at": started.isoformat(),
         "finished_at": finished.isoformat(),
         "duration_seconds": round((finished - started).total_seconds(), 3),
-        "system_one_enabled": _is_enabled("SYSTEM_ONE_ENABLED", True),
-        "system_one_model": os.getenv(
-            "DECISION_MODEL_NAME", "inception/mercury-decide:free"
-        ),
+        "system_one_requested": _is_enabled("SYSTEM_ONE_ENABLED", True),
+        "system_one_available": bool(system_one_client.api_key),
+        "system_one_enabled": system_one_client.enabled,
+        "system_one_model": system_one_client.model,
         "llm_model": os.getenv("QUERY_ENGINE_MODEL_NAME"),
         "max_reflections": int(os.getenv("MAX_REFLECTIONS", "2")),
     }

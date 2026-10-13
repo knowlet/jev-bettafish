@@ -1,12 +1,15 @@
 """Offline regressions for decision credentials and workflow preflight."""
 
+import json
 import os
 from pathlib import Path
 import subprocess
+import sys
+from types import ModuleType
 
 import pytest
 
-from SystemOne import client
+from SystemOne import client, decisions
 from scripts import run_workflow_research as runner
 
 
@@ -84,6 +87,115 @@ def test_runner_still_requires_llm_and_search_configuration(isolated_env, missin
     del os.environ[missing]
     with pytest.raises(RuntimeError, match=missing):
         runner._preflight()
+
+
+def run_offline_research(monkeypatch, output_dir, outcome="accepted"):
+    """Exercise the real runner/client/decision with only research and HTTP mocked."""
+    os.environ.update(
+        QUERY_ENGINE_API_KEY="llm-key", QUERY_ENGINE_MODEL_NAME="model",
+        TAVILY_API_KEY="search-key",
+    )
+    requests = []
+
+    def post(url, **kwargs):
+        requests.append(kwargs["json"])
+        request = client.httpx.Request("POST", url)
+        if outcome == "http_error":
+            return client.httpx.Response(503, request=request)
+        confidence = 0.1 if outcome == "low_confidence" else 0.99
+        return client.httpx.Response(200, request=request, json={"answers": {
+            "search_tool": {"choice": "basic_search_news", "confidence": confidence},
+        }})
+
+    class FakeAgent:
+        def research(self, query, save_report):
+            assert save_report is False
+            decision = decisions.choose_query_search_tool(
+                input_data={"title": query}, generated_query=query, phase="initial",
+            )
+            return "system_one" if decision is not None else "legacy"
+
+    module = ModuleType("QueryEngine.agent")
+    module.DeepSearchAgent = FakeAgent
+    monkeypatch.setitem(sys.modules, "QueryEngine.agent", module)
+    monkeypatch.setattr(client, "_SINGLETON", None)
+    monkeypatch.setattr(client.httpx, "post", post)
+    monkeypatch.setattr(sys, "argv", [
+        "run_workflow_research.py", "--query", "offline-query",
+        "--output-dir", str(output_dir),
+    ])
+    assert runner.main() == 0
+    metadata_text = (output_dir / "metadata.json").read_text(encoding="utf-8")
+    assert "llm-key" not in metadata_text
+    assert "decision-test-key" not in metadata_text
+    assert "search-key" not in metadata_text
+    return (
+        json.loads(metadata_text),
+        (output_dir / "result.md").read_text(encoding="utf-8"),
+        requests,
+    )
+
+
+@pytest.mark.parametrize("toggle,key,requested,available,enabled", [
+    (None, None, True, False, False),
+    ("true", None, True, False, False),
+    ("true", "", True, False, False),
+    ("true", "decision-test-key", True, True, True),
+    ("false", "decision-test-key", False, True, False),
+    ("false", None, False, False, False),
+])
+def test_runner_metadata_records_effective_client_availability(
+    isolated_env, monkeypatch, toggle, key, requested, available, enabled,
+):
+    cwd, _ = isolated_env
+    if toggle is not None:
+        os.environ["SYSTEM_ONE_ENABLED"] = toggle
+    if key is not None:
+        os.environ["DECISION_MODEL_API_KEY"] = key
+    metadata, report, requests = run_offline_research(monkeypatch, cwd / "artifacts")
+    assert metadata["system_one_enabled"] is enabled
+    assert metadata["system_one_requested"] is requested
+    assert metadata["system_one_available"] is available
+    assert metadata["system_one_model"] == "inception/mercury-decide:free"
+    assert report == ("system_one" if enabled else "legacy")
+    assert len(requests) == int(enabled)
+
+
+@pytest.mark.parametrize("location", ["cwd", "project"])
+@pytest.mark.parametrize("toggle", ["true", "false"])
+def test_runner_metadata_uses_dotenv_client_configuration(
+    isolated_env, monkeypatch, location, toggle,
+):
+    cwd, project = isolated_env
+    directory = cwd if location == "cwd" else project
+    (directory / ".env").write_text(
+        "DECISION_MODEL_API_KEY=decision-test-key\n"
+        "DECISION_MODEL_NAME=dotenv-model\n"
+        f"SYSTEM_ONE_ENABLED={toggle}\n", encoding="utf-8",
+    )
+    metadata, report, requests = run_offline_research(monkeypatch, cwd / "artifacts")
+    assert metadata["system_one_requested"] is (toggle == "true")
+    assert metadata["system_one_available"] is True
+    assert metadata["system_one_enabled"] is (toggle == "true")
+    assert metadata["system_one_model"] == "dotenv-model"
+    assert report == ("system_one" if toggle == "true" else "legacy")
+    assert all(request["model"] == "dotenv-model" for request in requests)
+
+
+@pytest.mark.parametrize("outcome", ["http_error", "low_confidence"])
+def test_runner_enabled_metadata_does_not_claim_successful_usage(
+    isolated_env, monkeypatch, outcome,
+):
+    cwd, _ = isolated_env
+    os.environ["DECISION_MODEL_API_KEY"] = "decision-test-key"
+    metadata, report, requests = run_offline_research(
+        monkeypatch, cwd / "artifacts", outcome=outcome,
+    )
+    assert metadata["system_one_requested"] is True
+    assert metadata["system_one_available"] is True
+    assert metadata["system_one_enabled"] is True
+    assert report == "legacy"
+    assert len(requests) == 1
 
 
 def workflow_preflight_script():

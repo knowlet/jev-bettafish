@@ -104,6 +104,17 @@ Anspire is wired for the rest of BettaFish but is not invoked by this job.
 Artifacts contain `result.md`, `metadata.json`, and (when used)
 `system_one_trace.jsonl`.
 
+In `metadata.json`, `system_one_requested` records the toggle and
+`system_one_available` records whether the shared client has a configured
+decision-model key, including values loaded from `.env`. The existing
+`system_one_enabled` field is true only when the client has a key and the
+toggle allows it; `system_one_model` is the model resolved by that client.
+These fields describe configuration, not endpoint reachability or successful
+decision usage. Requests can still fail open, and low-confidence or malformed
+answers can still use the legacy path. Use `system_one_trace.jsonl` to audit
+attempted requests and responses; a successful response alone does not prove
+that its answer passed a decision site's confidence and validation gates.
+
 
 ## Current decision-model coverage
 
