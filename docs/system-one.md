@@ -1,11 +1,38 @@
-# System One / Jev integration
+# System One / decision model integration
+
+## Endpoint
+
+System One talks to the **OpenRouter Decisions API** with the
+`inception/mercury-decide:free` model. All three are env-driven:
+
+| Role | Canonical env | Default when unset |
+|---|---|---|
+| key | `DECISION_MODEL_API_KEY` | — (fail-open to legacy LLM path) |
+| url | `DECISION_MODEL_BASE_URL` | `https://openrouter.ai/api/alpha/decisions` |
+| model | `DECISION_MODEL_NAME` | `inception/mercury-decide:free` |
+
+Legacy fallbacks: none. This is a breaking change — old names
+(`MODEL_*`, `OPENROUTER_API_KEY`, `TYPESAFE_API_KEY`, `SYSTEM_ONE_URL`,
+`SYSTEM_ONE_MODEL`) are no longer read. Rename your secrets/vars to the
+canonical `LLM_MODEL_*` / `DECISION_MODEL_*` names.
+
+The client also loads `.env` from the working directory, or the project root
+when no working-directory `.env` exists. Process environment values take
+precedence. The key remains optional in both the client and workflow preflight.
+
+`LLM_MODEL_*` supplies GitHub Actions/headless defaults only. The direct
+headless runner maps process environment values to missing `QUERY_ENGINE_*`
+fields; local and Docker `app.py` users must configure each engine separately.
+
+The request/response schema (`state` + typed `questions` -> `answers`) is the
+System One schema; mercury-decide serves it natively.
 
 ## Audit result
 
 BettaFish mixes open-ended generation with bounded judgment. System One is a
 good replacement for the latter, not for arbitrary prose generation.
 
-| Decision site | Fit for Jev | Status | Why |
+| Decision site | Fit for the decision model | Status | Why |
 | --- | --- | --- | --- |
 | QueryEngine search-tool routing | Strong | Implemented | Closed Tavily tool set |
 | QueryEngine reflection continue/stop | Strong | Implemented | Value-of-information Noul gate |
@@ -24,7 +51,7 @@ good replacement for the latter, not for arbitrary prose generation.
 | Report structure/title/hero copy | Poor | Keep LLM | Open-ended structured generation |
 | Chapter generation | Poor | Keep LLM | Long-form synthesis |
 | Forum host speech | Poor | Keep LLM | New prose and synthesis |
-| Free-form keyword generation | Mixed | Conditional LLM | Needed only when Jev says expansion is useful |
+| Free-form keyword generation | Mixed | Conditional LLM | Needed only when the decision model says expansion is useful |
 
 ### Existing bug fixed by the split
 
@@ -38,13 +65,14 @@ only generates the open-ended query.
 
 The integration is fail-open to the legacy path:
 
-- no `TYPESAFE_API_KEY` -> existing behavior;
+- no decision-model key (`DECISION_MODEL_API_KEY`) -> existing behavior;
 - request/response error -> existing behavior;
 - Choice confidence below `SYSTEM_ONE_CHOICE_CONFIDENCE` -> fallback;
 - reflection Noul below `SYSTEM_ONE_STOP_THRESHOLD` -> skip the next expensive
   reflection query + search + summary chain.
 
-Defaults: `SYSTEM_ONE_MODEL=jev-latest`,
+Defaults: `DECISION_MODEL_NAME=inception/mercury-decide:free`,
+`DECISION_MODEL_BASE_URL=https://openrouter.ai/api/alpha/decisions`,
 `SYSTEM_ONE_CHOICE_CONFIDENCE=0.45`,
 `SYSTEM_ONE_STOP_THRESHOLD=0.30`, `SYSTEM_ONE_TIMEOUT=30`.
 
@@ -60,24 +88,37 @@ Inputs: `query`, `max_reflections` (0..3), and `use_system_one`.
 Configuration wired by the workflow:
 
 Repository secrets:
-- `MODEL_API_KEY`
+- `LLM_MODEL_API_KEY`
 - `TAVILY_API_KEY`
 - `ANSPIRE_API_KEY`
-- `TYPESAFE_API_KEY`
+- `DECISION_MODEL_API_KEY` (optional; absent means legacy LLM fallback)
 
 Repository variables:
-- `MODEL_BASE_URL`
-- `MODEL_NAME`
+- `LLM_MODEL_BASE_URL`
+- `LLM_MODEL_NAME`
+- `DECISION_MODEL_BASE_URL` (default: OpenRouter Decisions endpoint)
+- `DECISION_MODEL_NAME` (default: `inception/mercury-decide:free`)
 
 The current headless job runs QueryEngine, so Tavily is the active search API.
 Anspire is wired for the rest of BettaFish but is not invoked by this job.
 Artifacts contain `result.md`, `metadata.json`, and (when used)
 `system_one_trace.jsonl`.
 
+In `metadata.json`, `system_one_requested` records the toggle and
+`system_one_available` records whether the shared client has a configured
+decision-model key, including values loaded from `.env`. The existing
+`system_one_enabled` field is true only when the client has a key and the
+toggle allows it; `system_one_model` is the model resolved by that client.
+These fields describe configuration, not endpoint reachability or successful
+decision usage. Requests can still fail open, and low-confidence or malformed
+answers can still use the legacy path. Use `system_one_trace.jsonl` to audit
+attempted requests and responses; a successful response alone does not prove
+that its answer passed a decision site's confidence and validation gates.
 
-## Current Jev coverage
 
-The following bounded decisions are now owned by System One / Jev:
+## Current decision-model coverage
+
+The following bounded decisions are now owned by System One:
 
 - QueryEngine initial and reflection search-tool routing (Choice).
 - QueryEngine reflection early-stop (Noul).
@@ -111,7 +152,7 @@ Insight routing asks tool, platform, recency window and whether sentiment is use
 
 ### Forum host gate
 
-Every five agent speeches are judged first. If `host_needed < SYSTEM_ONE_HOST_THRESHOLD`, the five speeches are consumed without paying for a host LLM turn. TypeSafe failure preserves the legacy host behavior.
+Every five agent speeches are judged first. If `host_needed < SYSTEM_ONE_HOST_THRESHOLD`, the five speeches are consumed without paying for a host LLM turn. Decision-model failure preserves the legacy host behavior.
 
 ### Word budget
 
@@ -120,7 +161,7 @@ WordBudgetNode first asks three Score questions per chapter (importance, evidenc
 
 ### KeywordOptimizer expansion gate
 
-Before the free-form keyword-expansion LLM runs, Jev judges whether expansion is
+Before the free-form keyword-expansion LLM runs, the decision model judges whether expansion is
 materially useful. Concrete event/person/organization/product queries use direct
 deterministic tokens and skip that LLM call. Abstract or compound analytical queries
 retain the existing LLM expansion path. System One failure is fail-open to legacy behavior.
@@ -128,7 +169,7 @@ retain the existing LLM expansion path. System One failure is fail-open to legac
 
 ### Report-structure refusal guard
 
-The report-structure LLM is upstream of every search and Jev decision. A provider
+The report-structure LLM is upstream of every search and System One decision. A provider
 refusal or malformed outline must therefore never silently turn into a generic
 unrelated research topic. Query/Media/Insight now share a guard with this policy:
 

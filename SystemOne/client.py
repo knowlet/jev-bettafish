@@ -1,4 +1,12 @@
-"""Minimal TypeSafe System One HTTP client with fail-open behavior."""
+"""Minimal System One HTTP client with fail-open behavior.
+
+Endpoint, model and key are env-driven (breaking change: no legacy
+fallbacks):
+
+  key:   DECISION_MODEL_API_KEY (unset -> client disabled -> legacy LLM path)
+  url:   DECISION_MODEL_BASE_URL (default: OpenRouter Decisions API)
+  model: DECISION_MODEL_NAME (default: inception/mercury-decide:free)
+"""
 
 from __future__ import annotations
 
@@ -13,6 +21,7 @@ from typing import Any, Dict, Mapping, Optional
 
 import httpx
 from loguru import logger
+from dotenv import load_dotenv
 
 
 _TRACE_LOCK = threading.Lock()
@@ -27,7 +36,7 @@ def _env_bool(name: str, default: bool) -> bool:
 
 
 class SystemOneClient:
-    """Small wrapper around POST /v1/systemone.
+    """Small wrapper around the OpenRouter Decisions API.
 
     This layer is intentionally non-critical: missing credentials, transport
     errors, response changes, or low-confidence decisions must not break the
@@ -41,11 +50,22 @@ class SystemOneClient:
         model: Optional[str] = None,
         timeout: Optional[float] = None,
     ) -> None:
-        self.api_key = api_key or os.getenv("TYPESAFE_API_KEY", "")
-        self.url = url or os.getenv(
-            "SYSTEM_ONE_URL", "https://api.typesafe.ai/v1/systemone"
+        # Match config.py: prefer a .env in the working directory, then the
+        # project root. Existing process environment always takes precedence.
+        cwd_env = Path.cwd() / ".env"
+        env_file = cwd_env if cwd_env.exists() else Path(__file__).resolve().parents[1] / ".env"
+        load_dotenv(env_file, override=False)
+        self.api_key = api_key or os.getenv("DECISION_MODEL_API_KEY", "")
+        self.url = (
+            url
+            or os.getenv("DECISION_MODEL_BASE_URL")
+            or "https://openrouter.ai/api/alpha/decisions"
         )
-        self.model = model or os.getenv("SYSTEM_ONE_MODEL", "jev-latest")
+        self.model = (
+            model
+            or os.getenv("DECISION_MODEL_NAME")
+            or "inception/mercury-decide:free"
+        )
         try:
             self.timeout = float(
                 timeout if timeout is not None else os.getenv("SYSTEM_ONE_TIMEOUT", "30")
@@ -116,6 +136,30 @@ class SystemOneClient:
         duration_ms: float,
         error: Optional[str] = None,
     ) -> None:
+        # Optional diagnostics must not discard a valid decision or prevent
+        # the caller from falling back after a failed request.
+        try:
+            self._write_trace(
+                decision_id=decision_id,
+                state=state,
+                result=result,
+                duration_ms=duration_ms,
+                error=error,
+            )
+        except Exception as exc:
+            logger.warning(
+                f"System One trace for '{decision_id}' could not be written: {exc}"
+            )
+
+    def _write_trace(
+        self,
+        *,
+        decision_id: str,
+        state: Dict[str, Any],
+        result: Optional[Dict[str, Any]],
+        duration_ms: float,
+        error: Optional[str] = None,
+    ) -> None:
         trace_path = os.getenv("SYSTEM_ONE_TRACE_PATH")
         if not trace_path:
             return
@@ -154,3 +198,4 @@ def get_system_one_client() -> SystemOneClient:
     if _SINGLETON is None:
         _SINGLETON = SystemOneClient()
     return _SINGLETON
+
