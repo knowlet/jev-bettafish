@@ -221,3 +221,71 @@ def test_workflow_still_requires_llm_and_search_configuration(missing):
     result = subprocess.run(["bash", "-e", "-c", workflow_preflight_script()], env=env, capture_output=True, text=True)
     assert result.returncode == 1
     assert missing in result.stdout
+
+
+
+@pytest.mark.parametrize("http_error", [False, True])
+@pytest.mark.parametrize("trace_failure", ["directory", "parent_file", "permission"])
+def test_trace_failure_preserves_decision_or_fallback(
+    monkeypatch, tmp_path, http_error, trace_failure,
+):
+    monkeypatch.setattr(client, "load_dotenv", lambda *args, **kwargs: None)
+    monkeypatch.setenv("SYSTEM_ONE_ENABLED", "true")
+    if trace_failure == "directory":
+        trace_path = tmp_path
+    elif trace_failure == "parent_file":
+        parent = tmp_path / "not-a-directory"
+        parent.write_text("occupied")
+        trace_path = parent / "trace.jsonl"
+    else:
+        trace_path = tmp_path / "trace.jsonl"
+        original_open = client.Path.open
+
+        def denied_open(path, *args, **kwargs):
+            if path == trace_path:
+                raise PermissionError("trace write denied")
+            return original_open(path, *args, **kwargs)
+
+        monkeypatch.setattr(client.Path, "open", denied_open)
+    monkeypatch.setenv("SYSTEM_ONE_TRACE_PATH", str(trace_path))
+    expected = {"answers": {"continue": {"noul": 0.8}}}
+
+    def post(url, **kwargs):
+        return client.httpx.Response(
+            503 if http_error else 200,
+            request=client.httpx.Request("POST", url),
+            json=expected,
+        )
+
+    monkeypatch.setattr(client.httpx, "post", post)
+    configured = client.SystemOneClient(api_key="offline-test-key")
+    result = configured.evaluate(state={}, questions={}, decision_id="test.trace")
+    assert result == (None if http_error else expected)
+
+
+@pytest.mark.parametrize("http_error", [False, True])
+def test_trace_still_records_success_and_failure(monkeypatch, tmp_path, http_error):
+    import json
+
+    monkeypatch.setattr(client, "load_dotenv", lambda *args, **kwargs: None)
+    monkeypatch.setenv("SYSTEM_ONE_ENABLED", "true")
+    trace_path = tmp_path / "nested" / "trace.jsonl"
+    monkeypatch.setenv("SYSTEM_ONE_TRACE_PATH", str(trace_path))
+    expected = {"answers": {"continue": {"noul": 0.8}}}
+
+    def post(url, **kwargs):
+        return client.httpx.Response(
+            503 if http_error else 200,
+            request=client.httpx.Request("POST", url),
+            json=expected,
+        )
+
+    monkeypatch.setattr(client.httpx, "post", post)
+    result = client.SystemOneClient(api_key="offline-test-key").evaluate(
+        state={}, questions={}, decision_id="test.trace",
+    )
+    assert result == (None if http_error else expected)
+    records = [json.loads(line) for line in trace_path.read_text().splitlines()]
+    assert len(records) == 1
+    assert records[0]["ok"] is (not http_error)
+    assert records[0]["decision_id"] == "test.trace"

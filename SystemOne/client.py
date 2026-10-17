@@ -136,6 +136,30 @@ class SystemOneClient:
         duration_ms: float,
         error: Optional[str] = None,
     ) -> None:
+        # Optional diagnostics must not discard a valid decision or prevent
+        # the caller from falling back after a failed request.
+        try:
+            self._write_trace(
+                decision_id=decision_id,
+                state=state,
+                result=result,
+                duration_ms=duration_ms,
+                error=error,
+            )
+        except Exception as exc:
+            logger.warning(
+                f"System One trace for '{decision_id}' could not be written: {exc}"
+            )
+
+    def _write_trace(
+        self,
+        *,
+        decision_id: str,
+        state: Dict[str, Any],
+        result: Optional[Dict[str, Any]],
+        duration_ms: float,
+        error: Optional[str] = None,
+    ) -> None:
         trace_path = os.getenv("SYSTEM_ONE_TRACE_PATH")
         if not trace_path:
             return
@@ -174,3 +198,4 @@ def get_system_one_client() -> SystemOneClient:
     if _SINGLETON is None:
         _SINGLETON = SystemOneClient()
     return _SINGLETON
+
