@@ -16,6 +16,20 @@ Legacy fallbacks: none. This is a breaking change — old names
 `SYSTEM_ONE_MODEL`) are no longer read. Rename your secrets/vars to the
 canonical `LLM_MODEL_*` / `DECISION_MODEL_*` names.
 
+This is a credential-provider migration, not merely a variable rename. For
+the default endpoint, `DECISION_MODEL_API_KEY` must contain an OpenRouter-issued
+key. Do not copy a TypeSafe-issued key to that name and send it to OpenRouter.
+If retaining Jev, explicitly configure the matching TypeSafe endpoint, model
+and credential under all three canonical names. `DECISION_MODEL_BASE_URL` is
+the full Decisions request URL, not an OpenAI-compatible base URL.
+
+When System One is requested without its canonical key, the client logs a
+warning and the workflow emits a warning annotation, then continues with the
+legacy path. This is deliberate fail-open behavior, not proof of a successful
+migration. Legacy-only `MODEL_*` workflow configuration fails preflight until
+the required `LLM_MODEL_*` values are configured. No credentials are copied
+automatically between providers.
+
 The client also loads `.env` from the working directory, or the project root
 when no working-directory `.env` exists. Process environment values take
 precedence. The key remains optional in both the client and workflow preflight.
@@ -67,7 +81,9 @@ The integration is fail-open to the legacy path:
 
 - no decision-model key (`DECISION_MODEL_API_KEY`) -> existing behavior;
 - request/response error -> existing behavior;
-- Choice confidence below `SYSTEM_ONE_CHOICE_CONFIDENCE` -> fallback;
+- Query search-tool and report-template Choice confidence below
+  `SYSTEM_ONE_CHOICE_CONFIDENCE` -> fallback; Media/Insight routing currently
+  validates the selected option but does not apply this confidence threshold;
 - reflection Noul below `SYSTEM_ONE_STOP_THRESHOLD` -> skip the next expensive
   reflection query + search + summary chain.
 
@@ -78,6 +94,74 @@ Defaults: `DECISION_MODEL_NAME=inception/mercury-decide:free`,
 
 Set `SYSTEM_ONE_TRACE_PATH` to write JSONL traces. By default traces contain a
 state hash, answers, and latency rather than the full state.
+
+HTTP 401/403, 429, 5xx, timeout and connection failures return to the legacy
+path. The client does not retry, sleep for `Retry-After`, or implement a circuit
+breaker: later decision sites can attempt another request. The fallback LLM
+and search providers can still incur their normal costs. Offline failure tests
+verify control flow, not live credentials, quotas, answer quality or service
+availability.
+
+### Research data leaving the process
+
+The state is sent as JSON to the configured decision endpoint; the trace's
+state hash does not anonymize or replace the outbound state. With the default
+configuration, OpenRouter and its routed decision-model provider receive it.
+Compared with Jev, the payload construction is unchanged but its recipients
+change. There is no automatic sensitive-data redaction.
+
+- Search routing: generated query and complete section input, including any
+  accumulated paragraph state present in that input.
+- Reflection: section title/content, accumulated summary and reflection index.
+- Evidence triage: query, section and up to 10 candidates by default; per
+  candidate, title up to 300 characters, content up to 900, URL up to 500,
+  publication date and platform.
+- Insight keyword gate: original query and context; Forum gate: last five
+  nonempty agent speeches, without a per-speech truncation.
+- Report template: query, template names/descriptions, first four report
+  excerpts up to 1,200 characters each and 1,200 characters of forum text.
+- Word budget: query, section outlines, up to 1,800 characters per supplied
+  report and 1,200 characters of forum text; layout: query and section outlines.
+
+Local traces additionally contain answers and usage. `SYSTEM_ONE_TRACE_STATE`
+opts into the first 4,000 characters of serialized state. The manual workflow
+uploads research artifacts (including traces) with 14-day retention; review
+artifact access independently of provider data policies.
+
+### Deployment acceptance checklist
+
+1. Confirm canonical secret/variable names exist in the actual deployment;
+   inspect names/presence only, never print key values. Workflow files and a
+   passing offline CI run cannot establish repository secret configuration.
+2. Verify the key issuer matches the explicit endpoint and model. Preserve
+   per-engine settings for local/Docker `app.py`; generic LLM names alone do
+   not configure those deployments.
+3. Review provider data handling and current free-model availability/limits
+   before enabling private or sensitive research. A `:free` model name does
+   not make the entire research workflow free.
+4. Compare representative non-sensitive, explicitly authorized samples with
+   Jev before relying on the existing thresholds. Compatible response types
+   do not establish identical decisions or confidence calibration. Routing,
+   evidence ordering, early-stop, host and report decisions may change.
+5. Distinguish configuration availability, attempted HTTP success and an
+   answer actually accepted by the decision helper. Keep System One disabled
+   if migration or data-sharing requirements are not satisfied.
+
+As checked on 2026-10-18, OpenRouter's [free-model limits](https://openrouter.ai/docs/api_reference/limits)
+are generally 20 requests/minute and 50/day below 10 purchased credits, rising
+to 1,000/day at that purchase tier (with a documented practical threshold of
+9 credits and possible account/endpoint exceptions). These are shared-account
+limits, not a reserved allowance per research job. Each decision-site call is
+one HTTP request, even when it batches multiple questions; quota exhaustion
+can therefore move a research run back onto paid LLM paths.
+
+The [public ZDR catalog](https://openrouter.ai/api/v1/endpoints/zdr) listed paid
+`inception/mercury-decide`, but not `inception/mercury-decide:free`, on that date.
+Absence does not prove training, but zero retention for this free route is not
+established. Review [provider-specific policies](https://openrouter.ai/docs/guides/privacy/provider-logging)
+and [OpenRouter collection settings](https://openrouter.ai/docs/guides/privacy/data-collection).
+The current client sends only model/state/questions and does not request a
+ZDR routing constraint. Do not assume it enforces a zero-retention policy.
 
 ## Manual GitHub Action
 
@@ -183,3 +267,4 @@ unrelated research topic. Query/Media/Insight now share a guard with this policy
 This fixes the failure mode observed in run 35323864180 where the structure model
 returned a refusal for "广州大学城随机捅人" and the old fallback replaced it with
 generic "研究概述 / 深度分析", causing every downstream search to drift off-topic.
+

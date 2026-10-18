@@ -87,10 +87,14 @@ jobs:
           [[ -n "$LLM_MODEL_NAME" ]] || missing+=("Repository variable LLM_MODEL_NAME")
           [[ -n "$TAVILY_API_KEY" ]] || missing+=("TAVILY_API_KEY")
           # System One is optional; missing credentials use the legacy LLM path.
+          if [[ "$SYSTEM_ONE_ENABLED" == "true" && -z "$DECISION_MODEL_API_KEY" ]]; then
+            echo "::warning::System One requested but DECISION_MODEL_API_KEY is missing; using legacy LLM fallback. Old credential names are not read. Configure an OpenRouter-issued key for the default endpoint."
+          fi
 
           if (( ${#missing[@]} > 0 )); then
             printf 'Missing required configuration:\n'
             printf '  - %s\n' "${missing[@]}"
+            echo "Migration: MODEL_* names are no longer read; use LLM_MODEL_* secrets/variables."
             echo
             echo "LLM_MODEL_BASE_URL is read from Repository Variables (vars.LLM_MODEL_BASE_URL) and may be empty only for the OpenAI SDK default endpoint."
             exit 1

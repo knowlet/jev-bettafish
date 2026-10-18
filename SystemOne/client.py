@@ -73,6 +73,14 @@ class SystemOneClient:
         except (TypeError, ValueError):
             self.timeout = 30.0
 
+        if not self.api_key and _env_bool("SYSTEM_ONE_ENABLED", True):
+            logger.warning(
+                "System One was requested but DECISION_MODEL_API_KEY is missing; "
+                "using the legacy LLM path. Legacy credential names are not read. "
+                "Configure a credential issued for DECISION_MODEL_BASE_URL; "
+                "do not reuse a TypeSafe credential at OpenRouter."
+            )
+
     @property
     def enabled(self) -> bool:
         return bool(self.api_key) and _env_bool("SYSTEM_ONE_ENABLED", True)

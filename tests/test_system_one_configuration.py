@@ -73,6 +73,72 @@ def test_legacy_credentials_are_not_sent_to_new_provider(isolated_env, monkeypat
     assert configured.evaluate(state={}, questions={}, decision_id="test") is None
 
 
+@pytest.mark.parametrize("toggle", ["true", "false"])
+def test_missing_key_warning_is_explicit_and_secret_safe(isolated_env, monkeypatch, toggle):
+    os.environ.update(
+        SYSTEM_ONE_ENABLED=toggle, TYPESAFE_API_KEY="private-legacy-value",
+        OPENROUTER_API_KEY="private-old-name-value",
+        SYSTEM_ONE_URL="https://old.invalid/private-url-value", SYSTEM_ONE_MODEL="old-model",
+    )
+    warnings = []
+    monkeypatch.setattr(client.logger, "warning", warnings.append)
+    configured = client.SystemOneClient()
+    assert configured.url == "https://openrouter.ai/api/alpha/decisions"
+    assert configured.model == "inception/mercury-decide:free"
+    assert not configured.enabled
+    assert len(warnings) == int(toggle == "true")
+    if warnings:
+        assert "DECISION_MODEL_API_KEY is missing" in warnings[0]
+        assert "legacy LLM path" in warnings[0]
+    assert "private-" not in " ".join(warnings)
+
+
+def test_generic_llm_migration_preserves_explicit_engine_configuration(isolated_env):
+    os.environ.update(
+        LLM_MODEL_API_KEY="generic-key", LLM_MODEL_BASE_URL="https://generic.invalid",
+        LLM_MODEL_NAME="generic-model", QUERY_ENGINE_API_KEY="engine-key",
+        MODEL_API_KEY="obsolete-key", MODEL_NAME="obsolete-model",
+    )
+    runner._apply_generic_model_env()
+    assert os.environ["QUERY_ENGINE_API_KEY"] == "engine-key"
+    assert os.environ["QUERY_ENGINE_BASE_URL"] == "https://generic.invalid"
+    assert os.environ["QUERY_ENGINE_MODEL_NAME"] == "generic-model"
+
+
+def test_only_canonical_credential_is_attached_to_default_endpoint(isolated_env, monkeypatch):
+    os.environ.update(
+        DECISION_MODEL_API_KEY="canonical-test-key", TYPESAFE_API_KEY="legacy-test-key",
+        OPENROUTER_API_KEY="old-name-test-key", SYSTEM_ONE_URL="https://old.invalid",
+    )
+    requests = []
+
+    def post(url, **kwargs):
+        requests.append((url, kwargs))
+        return client.httpx.Response(200, request=client.httpx.Request("POST", url), json={"answers": {}})
+
+    monkeypatch.setattr(client.httpx, "post", post)
+    assert client.SystemOneClient().evaluate(state={}, questions={}, decision_id="test") == {"answers": {}}
+    assert len(requests) == 1
+    url, kwargs = requests[0]
+    assert url == "https://openrouter.ai/api/alpha/decisions"
+    assert kwargs["headers"]["Authorization"] == "Bearer canonical-test-key"
+    serialized = json.dumps(requests)
+    assert "legacy-test-key" not in serialized
+    assert "old-name-test-key" not in serialized
+
+
+def test_old_llm_names_do_not_satisfy_workflow_preflight():
+    result = subprocess.run(["bash", "-e", "-c", workflow_preflight_script()], env={
+        "MODEL_API_KEY": "obsolete-key", "MODEL_NAME": "obsolete-model",
+        "TAVILY_API_KEY": "search-key", "SYSTEM_ONE_ENABLED": "false",
+    }, capture_output=True, text=True)
+    assert result.returncode == 1
+    assert "LLM_MODEL_API_KEY" in result.stdout
+    assert "LLM_MODEL_NAME" in result.stdout
+    assert "MODEL_* names are no longer read" in result.stdout
+    assert "obsolete-key" not in result.stdout
+
+
 @pytest.mark.parametrize("enabled", [None, "true", "false"])
 def test_runner_allows_missing_optional_decision_key(isolated_env, enabled):
     os.environ.update(QUERY_ENGINE_API_KEY="llm-key", QUERY_ENGINE_MODEL_NAME="model", TAVILY_API_KEY="search-key")
@@ -100,8 +166,12 @@ def run_offline_research(monkeypatch, output_dir, outcome="accepted"):
     def post(url, **kwargs):
         requests.append(kwargs["json"])
         request = client.httpx.Request("POST", url)
-        if outcome == "http_error":
-            return client.httpx.Response(503, request=request)
+        if isinstance(outcome, int):
+            return client.httpx.Response(outcome, request=request)
+        if outcome == "timeout":
+            raise client.httpx.ReadTimeout("offline timeout", request=request)
+        if outcome == "connection_error":
+            raise client.httpx.ConnectError("offline unavailable", request=request)
         confidence = 0.1 if outcome == "low_confidence" else 0.99
         return client.httpx.Response(200, request=request, json={"answers": {
             "search_tool": {"choice": "basic_search_news", "confidence": confidence},
@@ -182,7 +252,7 @@ def test_runner_metadata_uses_dotenv_client_configuration(
     assert all(request["model"] == "dotenv-model" for request in requests)
 
 
-@pytest.mark.parametrize("outcome", ["http_error", "low_confidence"])
+@pytest.mark.parametrize("outcome", [401, 403, 429, 500, 503, "timeout", "connection_error", "low_confidence"])
 def test_runner_enabled_metadata_does_not_claim_successful_usage(
     isolated_env, monkeypatch, outcome,
 ):
@@ -212,6 +282,7 @@ def test_workflow_allows_missing_optional_decision_key(enabled):
         "TAVILY_API_KEY": "search-key", "SYSTEM_ONE_ENABLED": enabled,
     }, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
+    assert ("::warning::System One requested" in result.stdout) is (enabled == "true")
 
 
 @pytest.mark.parametrize("missing", ["LLM_MODEL_API_KEY", "LLM_MODEL_NAME", "TAVILY_API_KEY"])
