@@ -10,6 +10,7 @@ from types import ModuleType
 import pytest
 
 from SystemOne import client, decisions
+from SystemOne import config as system_one_config
 from scripts import run_workflow_research as runner
 
 
@@ -24,6 +25,7 @@ def isolated_env(monkeypatch, tmp_path):
     project = tmp_path / "project"
     project.mkdir()
     monkeypatch.setattr(client, "__file__", str(project / "SystemOne" / "client.py"))
+    monkeypatch.setattr(system_one_config, "__file__", str(project / "SystemOne" / "config.py"))
     return tmp_path, project
 
 
@@ -101,8 +103,10 @@ def test_generic_llm_migration_preserves_explicit_engine_configuration(isolated_
     )
     runner._apply_generic_model_env()
     assert os.environ["QUERY_ENGINE_API_KEY"] == "engine-key"
-    assert os.environ["QUERY_ENGINE_BASE_URL"] == "https://generic.invalid"
-    assert os.environ["QUERY_ENGINE_MODEL_NAME"] == "generic-model"
+    assert os.environ["QUERY_ENGINE_BASE_URL"] == ""
+    assert "QUERY_ENGINE_MODEL_NAME" not in os.environ
+    with pytest.raises(RuntimeError, match="QUERY_ENGINE_MODEL_NAME"):
+        runner._preflight()
 
 
 def test_only_canonical_credential_is_attached_to_default_endpoint(isolated_env, monkeypatch):
@@ -283,6 +287,9 @@ def test_workflow_allows_missing_optional_decision_key(enabled):
     }, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     assert ("::warning::System One requested" in result.stdout) is (enabled == "true")
+    if enabled == "true":
+        assert "DECISION_MODEL_API_KEY is missing" in result.stdout
+        assert "LLM fallback" in result.stdout
 
 
 @pytest.mark.parametrize("missing", ["LLM_MODEL_API_KEY", "LLM_MODEL_NAME", "TAVILY_API_KEY"])
@@ -300,7 +307,7 @@ def test_workflow_still_requires_llm_and_search_configuration(missing):
 def test_trace_failure_preserves_decision_or_fallback(
     monkeypatch, tmp_path, http_error, trace_failure,
 ):
-    monkeypatch.setattr(client, "load_dotenv", lambda *args, **kwargs: None)
+    monkeypatch.setattr(client, "load_environment", lambda: dict(os.environ))
     monkeypatch.setenv("SYSTEM_ONE_ENABLED", "true")
     if trace_failure == "directory":
         trace_path = tmp_path
@@ -338,7 +345,7 @@ def test_trace_failure_preserves_decision_or_fallback(
 def test_trace_still_records_success_and_failure(monkeypatch, tmp_path, http_error):
     import json
 
-    monkeypatch.setattr(client, "load_dotenv", lambda *args, **kwargs: None)
+    monkeypatch.setattr(client, "load_environment", lambda: dict(os.environ))
     monkeypatch.setenv("SYSTEM_ONE_ENABLED", "true")
     trace_path = tmp_path / "nested" / "trace.jsonl"
     monkeypatch.setenv("SYSTEM_ONE_TRACE_PATH", str(trace_path))

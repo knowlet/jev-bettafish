@@ -7,13 +7,13 @@ judgments (Choice / Score / Noul).
 from __future__ import annotations
 
 import copy
-import os
 import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from loguru import logger
 from .client import get_system_one_client
+from .config import env_value
 
 
 QUERY_SEARCH_CRITERIA = {
@@ -95,14 +95,14 @@ _DATE_RE = re.compile(r"(?<!\d)(\d{4}-\d{2}-\d{2})(?!\d)")
 
 def _float_env(name: str, default: float) -> float:
     try:
-        return float(os.getenv(name, str(default)))
+        return float(env_value(name, str(default)))
     except (TypeError, ValueError):
         return default
 
 
 def _int_env(name: str, default: int) -> int:
     try:
-        return int(os.getenv(name, str(default)))
+        return int(env_value(name, str(default)))
     except (TypeError, ValueError):
         return default
 

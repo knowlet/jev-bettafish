@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import sys
+from collections.abc import Mapping, MutableMapping
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -18,30 +19,57 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 
-def _apply_generic_model_env() -> None:
+def _apply_generic_model_env(environment: MutableMapping[str, str] | None = None) -> None:
+    environment = os.environ if environment is None else environment
     aliases = {
-        "QUERY_ENGINE_API_KEY": os.getenv("LLM_MODEL_API_KEY", ""),
-        "QUERY_ENGINE_BASE_URL": os.getenv("LLM_MODEL_BASE_URL", ""),
-        "QUERY_ENGINE_MODEL_NAME": os.getenv("LLM_MODEL_NAME", ""),
+        "QUERY_ENGINE_API_KEY": "LLM_MODEL_API_KEY",
+        "QUERY_ENGINE_BASE_URL": "LLM_MODEL_BASE_URL",
+        "QUERY_ENGINE_MODEL_NAME": "LLM_MODEL_NAME",
     }
-    for target, value in aliases.items():
-        if not os.getenv(target) and value:
-            os.environ[target] = value
+    # A key, URL and model belong to the same provider configuration. Filling
+    # individual holes could send an engine-specific key to the generic URL.
+    # Empty .env.example placeholders still permit the generic configuration.
+    if any(environment.get(target) for target in aliases):
+        # Pin an omitted URL to the SDK default before QueryEngine Settings
+        # independently reads .env, which may contain an unrelated endpoint.
+        environment.setdefault("QUERY_ENGINE_BASE_URL", "")
+        return
+    for target, source in aliases.items():
+        environment[target] = environment.get(source, "")
 
 
-def _is_enabled(name: str, default: bool = True) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() not in {"0", "false", "no", "off", ""}
-
-
-def _preflight() -> None:
+def _preflight(environment: Mapping[str, str] | None = None) -> None:
+    environment = os.environ if environment is None else environment
     required = ["QUERY_ENGINE_API_KEY", "QUERY_ENGINE_MODEL_NAME", "TAVILY_API_KEY"]
     # System One is optional; a missing key uses the legacy LLM path.
-    missing = [name for name in required if not os.getenv(name)]
+    missing = [name for name in required if not environment.get(name, "").strip()]
     if missing:
         raise RuntimeError("Missing required environment variables: " + ", ".join(missing))
+
+
+def _prepare_environment(output_dir: Path) -> dict[str, str]:
+    from SystemOne.config import load_environment
+
+    environment = load_environment()
+    _apply_generic_model_env(environment)
+    _preflight(environment)
+    environment.setdefault("OUTPUT_DIR", str(output_dir / "query_reports"))
+
+    # QueryEngine constructs its Settings at import time. Promote only its
+    # resolved configuration, after validation, so .env-only launches work
+    # without importing unrelated .env credentials into the process.
+    query_names = {
+        "QUERY_ENGINE_API_KEY", "QUERY_ENGINE_BASE_URL", "QUERY_ENGINE_MODEL_NAME",
+        "QUERY_ENGINE_PROVIDER", "TAVILY_API_KEY", "SEARCH_TIMEOUT",
+        "SEARCH_CONTENT_MAX_LENGTH", "MAX_REFLECTIONS", "MAX_PARAGRAPHS",
+        "MAX_SEARCH_RESULTS", "OUTPUT_DIR", "SAVE_INTERMEDIATE_STATES",
+        "LLM_REQUEST_TIMEOUT", "QUERY_ENGINE_REQUEST_TIMEOUT",
+        "OPENCODE_SESSION_ID", "OPENCODE_USER_AGENT",
+    }
+    for name in query_names:
+        if name in environment:
+            os.environ[name] = environment[name]
+    return environment
 
 
 def main() -> int:
@@ -51,11 +79,8 @@ def main() -> int:
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
+    environment = _prepare_environment(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    os.environ.setdefault("OUTPUT_DIR", str(output_dir / "query_reports"))
-
-    _apply_generic_model_env()
-    _preflight()
 
     from QueryEngine.agent import DeepSearchAgent
     from SystemOne.client import get_system_one_client
@@ -63,11 +88,15 @@ def main() -> int:
     # Use the same dotenv-aware singleton as the decision call sites. These
     # flags describe configuration, not successful decision usage.
     system_one_client = get_system_one_client()
+    stats_before = system_one_client.request_stats
 
     started = datetime.now(timezone.utc)
     agent = DeepSearchAgent()
     report = agent.research(args.query, save_report=False)
     finished = datetime.now(timezone.utc)
+    stats_after = system_one_client.request_stats
+    request_stats = {name: stats_after[name] - stats_before[name] for name in stats_before}
+    agent_config = getattr(agent, "config", None)
 
     (output_dir / "result.md").write_text(report, encoding="utf-8")
     metadata = {
@@ -75,12 +104,20 @@ def main() -> int:
         "started_at": started.isoformat(),
         "finished_at": finished.isoformat(),
         "duration_seconds": round((finished - started).total_seconds(), 3),
-        "system_one_requested": _is_enabled("SYSTEM_ONE_ENABLED", True),
+        "system_one_requested": system_one_client.requested,
         "system_one_available": bool(system_one_client.api_key),
         "system_one_enabled": system_one_client.enabled,
         "system_one_model": system_one_client.model,
-        "llm_model": os.getenv("QUERY_ENGINE_MODEL_NAME"),
-        "max_reflections": int(os.getenv("MAX_REFLECTIONS", "2")),
+        "system_one_requests_attempted": request_stats["attempted"],
+        # HTTP/JSON success does not imply acceptance by a decision's gates.
+        "system_one_responses_succeeded": request_stats["succeeded"],
+        "system_one_requests_failed": request_stats["failed"],
+        "llm_model": getattr(
+            agent_config, "QUERY_ENGINE_MODEL_NAME", environment["QUERY_ENGINE_MODEL_NAME"],
+        ),
+        "max_reflections": int(getattr(
+            agent_config, "MAX_REFLECTIONS", environment.get("MAX_REFLECTIONS", "2"),
+        )),
     }
     (output_dir / "metadata.json").write_text(
         json.dumps(metadata, ensure_ascii=False, indent=2),

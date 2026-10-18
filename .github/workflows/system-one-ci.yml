@@ -52,7 +52,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-actions.txt
 
-      - name: Compile Jev-integrated runtime paths
+      - name: Compile System One runtime paths
         run: |
           python -m compileall -q \
             SystemOne \
@@ -62,13 +62,12 @@ jobs:
             ForumEngine/monitor.py \
             ReportEngine/nodes/template_selection_node.py \
             ReportEngine/nodes/word_budget_node.py \
-            ReportEngine/nodes/document_layout_node.py
+            ReportEngine/nodes/document_layout_node.py \
+            scripts/run_workflow_research.py
 
       - name: Run System One tests
         run: |
           pytest -q \
-            tests/test_system_one_configuration.py \
-            tests/test_system_one_decisions.py \
-            tests/test_system_one_wiring.py \
+            tests/test_system_one_*.py \
             tests/test_report_structure_guard.py \
             tests/test_opencode_go.py

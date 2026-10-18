@@ -87,9 +87,6 @@ jobs:
           [[ -n "$LLM_MODEL_NAME" ]] || missing+=("Repository variable LLM_MODEL_NAME")
           [[ -n "$TAVILY_API_KEY" ]] || missing+=("TAVILY_API_KEY")
           # System One is optional; missing credentials use the legacy LLM path.
-          if [[ "$SYSTEM_ONE_ENABLED" == "true" && -z "$DECISION_MODEL_API_KEY" ]]; then
-            echo "::warning::System One requested but DECISION_MODEL_API_KEY is missing; using legacy LLM fallback. Old credential names are not read. Configure an OpenRouter-issued key for the default endpoint."
-          fi
 
           if (( ${#missing[@]} > 0 )); then
             printf 'Missing required configuration:\n'
@@ -108,6 +105,13 @@ jobs:
             echo "LLM_MODEL_BASE_URL is empty; OpenAI SDK default endpoint will be used"
           fi
           echo "DECISION_MODEL_NAME=$DECISION_MODEL_NAME"
+          if [[ "$SYSTEM_ONE_ENABLED" == "true" && -z "${DECISION_MODEL_API_KEY//[[:space:]]/}" ]]; then
+            echo "::warning::System One requested but DECISION_MODEL_API_KEY is missing or blank; continuing with the legacy LLM fallback. Old credential names are not read. Configure an OpenRouter-issued key for the default endpoint."
+          elif [[ "$SYSTEM_ONE_ENABLED" != "true" ]]; then
+            echo "System One is disabled; the LLM path will be used."
+          else
+            echo "System One credentials are configured; metadata.json will record request outcomes."
+          fi
 
       - name: Install headless dependencies
         run: |
@@ -126,7 +130,7 @@ jobs:
             ReportEngine/nodes/word_budget_node.py \
             ReportEngine/nodes/document_layout_node.py \
             scripts/run_workflow_research.py
-          pytest -q tests/test_system_one_configuration.py tests/test_system_one_decisions.py tests/test_system_one_wiring.py tests/test_report_structure_guard.py tests/test_opencode_go.py
+          pytest -q tests/test_system_one_*.py tests/test_report_structure_guard.py tests/test_opencode_go.py
 
       - name: Run research
         env:

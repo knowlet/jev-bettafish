@@ -411,6 +411,25 @@ INSIGHT_ENGINE_MODEL_NAME=
 ...
 ```
 
+#### 可选的 System One 决策服务与迁移
+
+System One 的默认服务已迁移到 OpenRouter Decisions API。配置使用以下名称：
+
+```dotenv
+DECISION_MODEL_API_KEY=your-openrouter-issued-key
+DECISION_MODEL_BASE_URL=https://openrouter.ai/api/alpha/decisions
+DECISION_MODEL_NAME=inception/mercury-decide:free
+SYSTEM_ONE_ENABLED=true
+```
+
+这是不兼容旧配置的迁移：`TYPESAFE_API_KEY`、`OPENROUTER_API_KEY`、`SYSTEM_ONE_URL` 和 `SYSTEM_ONE_MODEL` 不再读取。默认端点必须使用 OpenRouter 签发的金钥，不能仅把旧 TypeSafe 金钥改名。`DECISION_MODEL_BASE_URL` 是完整的 POST endpoint；使用其他服务时，金钥、端点和模型必须配套。
+
+未配置决策金钥或设置 `SYSTEM_ONE_ENABLED=false` 时不会发送决策请求，研究流程继续使用原本的 LLM；请求失败或答案未通过验证时也会回退。启用开关不代表服务已验证可用。客户端读取工作目录 `.env`，没有该文件才读取项目根目录 `.env`；进程环境（包括空值）优先，修改配置后需重启进程。
+
+GitHub Actions 使用 secrets `LLM_MODEL_API_KEY`、`TAVILY_API_KEY` 和可选的 `DECISION_MODEL_API_KEY`，以及 vars `LLM_MODEL_BASE_URL`、`LLM_MODEL_NAME`、`DECISION_MODEL_BASE_URL`、`DECISION_MODEL_NAME`。旧 `MODEL_*` 名称不再读取。直接运行 headless 脚本也支持这些 `LLM_MODEL_*` 默认值；本地或 Docker `app.py` 仍需填写各 Engine 的独立配置。不要把部分 `QUERY_ENGINE_*` 配置与另一服务的 `LLM_MODEL_*` 混用。
+
+完整的迁移步骤、配置优先级与研究 metadata 定义见 [System One 配置说明](docs/system-one.md)。
+
 ### 6. 启动系统
 
 #### 6.1 完整系统启动（推荐）
