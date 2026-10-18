@@ -219,6 +219,12 @@ preflight reports that the run will use the LLM fallback and continues.
 Artifacts contain `result.md`, `metadata.json`, and (when used)
 `system_one_trace.jsonl`.
 
+For direct headless runs, `--output-dir` selects the artifact directory and
+defaults QueryEngine's working directory to its `query_reports` subdirectory.
+Only a nonblank process-level `OUTPUT_DIR` overrides that QueryEngine path;
+the runner ignores a dotenv `OUTPUT_DIR`, and blank process values use the CLI
+default. `result.md` and `metadata.json` always use `--output-dir`.
+
 `metadata.json` separates configuration from per-run request outcomes:
 
 | Field | Meaning |

@@ -53,7 +53,14 @@ def _prepare_environment(output_dir: Path) -> dict[str, str]:
     environment = load_environment()
     _apply_generic_model_env(environment)
     _preflight(environment)
-    environment.setdefault("OUTPUT_DIR", str(output_dir / "query_reports"))
+    # Only a nonblank process override may replace the CLI-derived directory.
+    # A dotenv OUTPUT_DIR must not override it or make startup fail on "".
+    process_output_dir = os.environ.get("OUTPUT_DIR", "")
+    environment["OUTPUT_DIR"] = (
+        process_output_dir
+        if process_output_dir.strip()
+        else str(output_dir / "query_reports")
+    )
 
     # QueryEngine constructs its Settings at import time. Promote only its
     # resolved configuration, after validation, so .env-only launches work

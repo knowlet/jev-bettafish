@@ -121,6 +121,35 @@ def run_research(monkeypatch, directory):
     return metadata, report
 
 
+@pytest.mark.parametrize("file_output", ["", "dotenv-reports"])
+@pytest.mark.parametrize("process_output,expected_directory", [
+    (None, "artifacts/query_reports"),
+    ("", "artifacts/query_reports"),
+    ("   ", "artifacts/query_reports"),
+    ("process-reports", "process-reports"),
+])
+def test_runner_report_directory_uses_cli_default_or_nonblank_process_override(
+    offline_runner, monkeypatch, file_output, process_output, expected_directory,
+):
+    write_env(
+        offline_runner, QUERY_ENGINE_API_KEY="offline-llm-key",
+        QUERY_ENGINE_MODEL_NAME="offline-model", TAVILY_API_KEY="offline-search-key",
+        OUTPUT_DIR=file_output,
+    )
+    if process_output is not None:
+        os.environ["OUTPUT_DIR"] = process_output
+    captured = install_offline_agent(monkeypatch)
+    metadata, report = run_research(monkeypatch, offline_runner)
+
+    # Assert the real consumer's Settings, not just the runner's merged dict.
+    # A blank value would make DeepSearchAgent's directory creation fail.
+    config, = captured["configs"]
+    assert config.OUTPUT_DIR.strip()
+    assert Path(config.OUTPUT_DIR).resolve() == offline_runner / expected_directory
+    assert metadata["llm_model"] == "offline-model"
+    assert report == "fallback: offline report"
+
+
 @pytest.mark.parametrize("group", ["engine", "generic"])
 def test_dotenv_only_startup_uses_matching_llm_and_decision_credentials(
     offline_runner, monkeypatch, group,
