@@ -406,6 +406,25 @@ INSIGHT_ENGINE_MODEL_NAME=
 ...
 ```
 
+#### Optional System One decision service and migration
+
+System One now defaults to the OpenRouter Decisions API:
+
+```dotenv
+DECISION_MODEL_API_KEY=your-openrouter-issued-key
+DECISION_MODEL_BASE_URL=https://openrouter.ai/api/alpha/decisions
+DECISION_MODEL_NAME=inception/mercury-decide:free
+SYSTEM_ONE_ENABLED=true
+```
+
+This is a breaking configuration change: `TYPESAFE_API_KEY`, `OPENROUTER_API_KEY`, `SYSTEM_ONE_URL`, and `SYSTEM_ONE_MODEL` are no longer read. The default endpoint requires an OpenRouter-issued key; renaming an old TypeSafe credential does not migrate it. `DECISION_MODEL_BASE_URL` is the complete POST endpoint. A custom service requires a matching key, endpoint, and model.
+
+A missing decision key or `SYSTEM_ONE_ENABLED=false` sends no decision requests and preserves the original LLM path. Request failures and answers rejected by validation also fall back. The enable toggle does not prove that the service works. The client reads the working-directory `.env`, falling back to the project-root `.env` only if that file is absent; process environment values, including empty values, take precedence. Restart after changing configuration.
+
+GitHub Actions uses secrets `LLM_MODEL_API_KEY`, `TAVILY_API_KEY`, and optional `DECISION_MODEL_API_KEY`, plus variables `LLM_MODEL_BASE_URL`, `LLM_MODEL_NAME`, `DECISION_MODEL_BASE_URL`, and `DECISION_MODEL_NAME`. Legacy `MODEL_*` names are no longer read. The direct headless runner also supports these `LLM_MODEL_*` defaults; local and Docker `app.py` still require individual engine configuration. Do not mix a partial `QUERY_ENGINE_*` configuration with another provider's `LLM_MODEL_*` values.
+
+See [System One configuration](docs/system-one.md) for migration steps, configuration precedence, and research metadata definitions.
+
 ### 6. Launch System
 
 #### 6.1 Complete System Launch (Recommended)
